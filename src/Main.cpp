@@ -86,9 +86,10 @@ namespace GWaveFX {
 
 int main() {
 
-    GWaveFX::View view;
-    view.run();
-
+    {
+        GWaveFX::View view;
+        view.run();
+    }
     //GWaveFX::getAudio();
 
     return 0;

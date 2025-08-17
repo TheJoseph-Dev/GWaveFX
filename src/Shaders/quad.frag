@@ -6,10 +6,13 @@ layout(set = 0, binding = 0) uniform UBO {
     vec4 resolution;  // vec4 because of padding
 };
 
+layout(set = 0, binding = 1) uniform sampler1D dataSampler;
+
 void main() {
     vec2 uv = fragUV;
     uv.y = 1.0-uv.y;
     uv = uv*2.0-1.0;
     uv.x *= resolution.x/resolution.y;
-    outColor = vec4(uv, 0.0, 1.0);
+    float value = texture(dataSampler, fragUV.x).r;
+    outColor = vec4(value);
 }
