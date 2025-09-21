@@ -87,9 +87,9 @@ class Vulkan {
     VkDescriptorPool descriptorPool;
     VkDescriptorSet fragDescriptorSet;
 
-    VkImage dataImage;
-    VkDeviceMemory dataImageMemory;
-    VkImageView dataTexture;
+    VkImage dataImage[2];
+    VkDeviceMemory dataImageMemory[2];
+    VkImageView dataTexture[2];
     VkSampler dataSampler;
 
     VkBuffer vertexBuffer;
@@ -616,51 +616,7 @@ public:
         //VkImage dataImage; // Gotta destroy it later
         //VkImageView dataTexture;
         //VkSampler dataSampler;
-
-        VkImageCreateInfo dataImageInfo{};
-        dataImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        dataImageInfo.imageType = VK_IMAGE_TYPE_1D;
-        dataImageInfo.extent.width = size;
-        dataImageInfo.extent.height = 1;
-        dataImageInfo.extent.depth = 1;
-        dataImageInfo.mipLevels = 1;
-        dataImageInfo.arrayLayers = 1;
-        dataImageInfo.format = VK_FORMAT_R32_SFLOAT;
-        dataImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        dataImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        dataImageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        dataImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        dataImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-
-        vkCreateImage(this->device, &dataImageInfo, nullptr, &this->dataImage);
-
-        VkMemoryRequirements memRequirements;
-        vkGetImageMemoryRequirements(this->device, this->dataImage, &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        if (vkAllocateMemory(this->device, &allocInfo, nullptr, &this->dataImageMemory) != VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate image memory!");
-        }
-
-        vkBindImageMemory(this->device, dataImage, dataImageMemory, 0);
-
-        VkImageViewCreateInfo dataTextureInfo{};
-        dataTextureInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        dataTextureInfo.image = this->dataImage;
-        dataTextureInfo.viewType = VK_IMAGE_VIEW_TYPE_1D;
-        dataTextureInfo.format = VK_FORMAT_R32_SFLOAT;
-        dataTextureInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        dataTextureInfo.subresourceRange.baseMipLevel = 0;
-        dataTextureInfo.subresourceRange.levelCount = 1;
-        dataTextureInfo.subresourceRange.baseArrayLayer = 0;
-        dataTextureInfo.subresourceRange.layerCount = 1;
-
-        vkCreateImageView(this->device, &dataTextureInfo, nullptr, &dataTexture);
-
+        
         VkSamplerCreateInfo dataSamplerInfo{};
         dataSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         dataSamplerInfo.magFilter = VK_FILTER_LINEAR;
@@ -674,27 +630,74 @@ public:
 
         vkCreateSampler(this->device, &dataSamplerInfo, nullptr, &dataSampler);
 
-        VkDescriptorSetLayoutBinding imageSamplerBinding{};
-        imageSamplerBinding.binding = 1;
-        imageSamplerBinding.descriptorCount = 1;
-        imageSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        imageSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        imageSamplerBinding.pImmutableSamplers = nullptr;
+        // Double Buffer
+        for (int i = 0; i < 2; i++) {
+            VkImageCreateInfo dataImageInfo{};
+            dataImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            dataImageInfo.imageType = VK_IMAGE_TYPE_1D;
+            dataImageInfo.extent.width = size;
+            dataImageInfo.extent.height = 1;
+            dataImageInfo.extent.depth = 1;
+            dataImageInfo.mipLevels = 1;
+            dataImageInfo.arrayLayers = 1;
+            dataImageInfo.format = VK_FORMAT_R32_SFLOAT;
+            dataImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            dataImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            dataImageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            dataImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            dataImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 
-        VkDescriptorImageInfo descriptorImageInfo{};
-        descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        descriptorImageInfo.imageView = dataTexture;
-        descriptorImageInfo.sampler = dataSampler;
+            vkCreateImage(this->device, &dataImageInfo, nullptr, &this->dataImage[i]);
 
-        VkWriteDescriptorSet samplerWrite{};
-        samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        samplerWrite.dstSet = descriptorSet;
-        samplerWrite.dstBinding = 1;
-        samplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerWrite.pImageInfo = &descriptorImageInfo;
-        samplerWrite.descriptorCount = 1;
+            VkMemoryRequirements memRequirements;
+            vkGetImageMemoryRequirements(this->device, this->dataImage[i], &memRequirements);
 
-        vkUpdateDescriptorSets(this->device, 1, &samplerWrite, 0, nullptr);
+            VkMemoryAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memRequirements.size;
+            allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+            if (vkAllocateMemory(this->device, &allocInfo, nullptr, &this->dataImageMemory[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to allocate image memory!");
+            }
+
+            vkBindImageMemory(this->device, dataImage[i], dataImageMemory[i], 0);
+
+            VkImageViewCreateInfo dataTextureInfo{};
+            dataTextureInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            dataTextureInfo.image = this->dataImage[i];
+            dataTextureInfo.viewType = VK_IMAGE_VIEW_TYPE_1D;
+            dataTextureInfo.format = VK_FORMAT_R32_SFLOAT;
+            dataTextureInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            dataTextureInfo.subresourceRange.baseMipLevel = 0;
+            dataTextureInfo.subresourceRange.levelCount = 1;
+            dataTextureInfo.subresourceRange.baseArrayLayer = 0;
+            dataTextureInfo.subresourceRange.layerCount = 1;
+
+            vkCreateImageView(this->device, &dataTextureInfo, nullptr, &dataTexture[i]);
+
+            VkDescriptorSetLayoutBinding imageSamplerBinding{};
+            imageSamplerBinding.binding = 1;
+            imageSamplerBinding.descriptorCount = 1;
+            imageSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            imageSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            imageSamplerBinding.pImmutableSamplers = nullptr;
+
+            VkDescriptorImageInfo descriptorImageInfo{};
+            descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            descriptorImageInfo.imageView = dataTexture[i];
+            descriptorImageInfo.sampler = dataSampler;
+
+            VkWriteDescriptorSet samplerWrite{};
+            samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            samplerWrite.dstSet = descriptorSet;
+            samplerWrite.dstBinding = 1;
+            samplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            samplerWrite.pImageInfo = &descriptorImageInfo;
+            samplerWrite.descriptorCount = 1;
+
+            vkUpdateDescriptorSets(this->device, 1, &samplerWrite, 0, nullptr);
+        }
     }
 
     void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout) {
@@ -783,23 +786,23 @@ public:
         endSingleTimeCommands(commandBuffer);
     }
 
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    void* mappedStagedData;
+    int textureIndex = 0;
     void createUniformBufferTexture1D(const float* dataBuffer, uint32_t size, VkDescriptorSet descriptorSet) {
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-
-        createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-        void* data;
-        vkMapMemory(this->device, stagingBufferMemory, 0, size, 0, &data);
-        memcpy(data, dataBuffer, static_cast<size_t>(size*sizeof(float)));
-        vkUnmapMemory(this->device, stagingBufferMemory);
+        createBuffer(size * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+        vkMapMemory(this->device, stagingBufferMemory, 0, size * sizeof(float), 0, &mappedStagedData);
+        memcpy(this->mappedStagedData, dataBuffer, static_cast<size_t>(size*sizeof(float)));
+        //vkUnmapMemory(this->device, stagingBufferMemory);
 
         createImage1D(size, descriptorSet);
-        transitionImageLayout(this->dataImage, VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        copyBufferToImage1D(stagingBuffer, this->dataImage, static_cast<uint32_t>(size));
-        transitionImageLayout(this->dataImage, VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        //transitionImageLayout(this->dataImage, VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        //copyBufferToImage1D(stagingBuffer, this->dataImage, static_cast<uint32_t>(size));
+        //transitionImageLayout(this->dataImage[i], VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        vkFreeMemory(device, stagingBufferMemory, nullptr);
+        //vkDestroyBuffer(this->device, stagingBuffer, nullptr);
+        //vkFreeMemory(this->device, stagingBufferMemory, nullptr);
     }
     
     void createGraphicsPipeline() {
@@ -860,7 +863,7 @@ public:
         const uint32_t bufferSize = 512;
         float dataBuffer[bufferSize] = { 0 };
         for (int i = 0; i < bufferSize; ++i) dataBuffer[i] = sin(i * 0.0174532925 * 10);
-        createUniformBufferTexture1D(dataBuffer, bufferSize, fragDescriptorSet);
+        createUniformBufferTexture1D(dataBuffer, bufferSize, this->fragDescriptorSet);
 
         // Dynamic State
         std::vector<VkDynamicState> dynamicStates = {
@@ -1111,7 +1114,8 @@ public:
 
         vkDestroySwapchainKHR(device, swapChain, nullptr);
 
-        vkDestroyImage(device, dataImage, nullptr);
+        for(int i = 0; i < 2; i++)
+            vkDestroyImage(device, dataImage[i], nullptr);
         vkDestroyBuffer(device, vertexBuffer, nullptr);
         vkDestroyDevice(device, nullptr);
         vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -1193,6 +1197,30 @@ public:
         //vkCmdDraw(this->commandBuffers[currentFrame], 6, 1, 0, 0);
 
         // TODO: Next uniform buffers will need to have at least as much as FRAMES_IN_FLIGHT to avoid reading/writting corruption
+        const uint32_t bufferSize = 512;
+        float dataBuffer[bufferSize] = { 0 };
+        for (int i = 0; i < bufferSize; ++i) dataBuffer[i] = sin(i * 0.0174532925 * 10 + (rand()%10));
+        memcpy(this->mappedStagedData, dataBuffer, static_cast<size_t>(bufferSize * sizeof(float)));
+
+        transitionImageLayout(this->dataImage[this->textureIndex], VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        copyBufferToImage1D(this->stagingBuffer, this->dataImage[this->textureIndex], static_cast<uint32_t>(bufferSize));
+        transitionImageLayout(this->dataImage[this->textureIndex], VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        VkDescriptorImageInfo descriptorImageInfo{};
+        descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        descriptorImageInfo.imageView = this->dataTexture[this->textureIndex];  // Use the correct texture
+        descriptorImageInfo.sampler = this->dataSampler;
+
+        // Update descriptor set with new texture
+        VkWriteDescriptorSet samplerWrite{};
+        samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        samplerWrite.dstSet = this->fragDescriptorSet;
+        samplerWrite.dstBinding = 1;  // Assuming texture is bound to binding 1
+        samplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        samplerWrite.pImageInfo = &descriptorImageInfo;
+        samplerWrite.descriptorCount = 1;
+        this->textureIndex = (this->textureIndex + 1) & 1;
+
+        vkUpdateDescriptorSets(this->device, 1, &samplerWrite, 0, nullptr);
        
         vkCmdBindDescriptorSets(
             this->commandBuffers[currentFrame],
