@@ -26,7 +26,7 @@ if not exist vendor (
 :: ---- Download GLFW ----
 if not exist vendor\glfw (
     echo [Clone] Cloning GLFW...
-    git clone https://github.com/glfw/glfw vendor/glfw || (
+    git clone --depth 1 https://github.com/glfw/glfw vendor/glfw || (
         echo [Error] Failed to clone GLFW.
         exit /b 1
     )
@@ -35,11 +35,39 @@ if not exist vendor\glfw (
 :: ---- Download GLM ----
 if not exist vendor\glm (
     echo [Clone] Cloning GLM...
-    git clone https://github.com/g-truc/glm vendor/glm || (
+    git clone --depth 1 https://github.com/g-truc/glm vendor/glm || (
         echo [Error] Failed to clone GLM.
         exit /b 1
     )
 )
+
+:: ---- Download ImGUI ----
+if not exist vendor\imgui (
+    echo [Clone] Cloning ImGUI...
+    git clone --depth 1 https://github.com/ocornut/imgui vendor/imgui || (
+        echo [Error] Failed to clone ImGUI.
+        exit /b 1
+    )
+)
+
+:: ---- Download Portaudio ----
+if not exist vendor\portaudio (
+    echo [Clone] Cloning PortAudio...
+    git clone --depth 1 https://github.com/PortAudio/portaudio vendor/portaudio || (
+        echo [Error] Failed to clone PortAudio.
+        exit /b 1
+    )
+)
+
+:: ---- Download fftw ----
+if not exist vendor\fftw (
+    echo [Clone] Cloning fftw...
+    git clone --depth 1 https://github.com/PortAudio/portaudio vendor/fftw || (
+        echo [Error] Failed to clone fftw.
+        exit /b 1
+    )
+)
+
 
 if not exist src\Main.cpp (
     echo [Generate] Writing Main.cpp...

@@ -87,9 +87,9 @@ class Vulkan {
     VkDescriptorPool descriptorPool;
     VkDescriptorSet fragDescriptorSet;
 
-    VkImage dataImage[2];
-    VkDeviceMemory dataImageMemory[2];
-    VkImageView dataTexture[2];
+    std::vector<VkImage> dataImages[2];
+    std::vector<VkDeviceMemory> dataImagesMemory[2];
+    std::vector<VkImageView> dataTextures[2];
     VkSampler dataSampler;
 
     VkBuffer vertexBuffer;
@@ -612,11 +612,7 @@ public:
         Therefore, when having to update an image many times it is better to not stage at all
     */
 
-    void createImage1D(uint32_t size, VkDescriptorSet descriptorSet) {
-        //VkImage dataImage; // Gotta destroy it later
-        //VkImageView dataTexture;
-        //VkSampler dataSampler;
-        
+    void create1DImageSampler() {
         VkSamplerCreateInfo dataSamplerInfo{};
         dataSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         dataSamplerInfo.magFilter = VK_FILTER_LINEAR;
@@ -628,10 +624,20 @@ public:
         dataSamplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
         dataSamplerInfo.unnormalizedCoordinates = VK_FALSE;
 
-        vkCreateSampler(this->device, &dataSamplerInfo, nullptr, &dataSampler);
+        vkCreateSampler(this->device, &dataSamplerInfo, nullptr, &this->dataSampler);
+    }
+
+    void createImage1D(uint32_t size, VkDescriptorSet descriptorSet) {
+        //VkImage dataImage; // Gotta destroy it later
+        //VkImageView dataTexture;
+        //VkSampler dataSampler;
 
         // Double Buffer
         for (int i = 0; i < 2; i++) {
+            this->dataImages[i].push_back({});
+            this->dataImagesMemory[i].push_back({});
+            this->dataTextures[i].push_back({});
+
             VkImageCreateInfo dataImageInfo{};
             dataImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             dataImageInfo.imageType = VK_IMAGE_TYPE_1D;
@@ -647,25 +653,25 @@ public:
             dataImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             dataImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 
-            vkCreateImage(this->device, &dataImageInfo, nullptr, &this->dataImage[i]);
+            vkCreateImage(this->device, &dataImageInfo, nullptr, &this->dataImages[i].back());
 
             VkMemoryRequirements memRequirements;
-            vkGetImageMemoryRequirements(this->device, this->dataImage[i], &memRequirements);
+            vkGetImageMemoryRequirements(this->device, this->dataImages[i].back(), &memRequirements);
 
             VkMemoryAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             allocInfo.allocationSize = memRequirements.size;
             allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-            if (vkAllocateMemory(this->device, &allocInfo, nullptr, &this->dataImageMemory[i]) != VK_SUCCESS) {
+            if (vkAllocateMemory(this->device, &allocInfo, nullptr, &this->dataImagesMemory[i].back()) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate image memory!");
             }
 
-            vkBindImageMemory(this->device, dataImage[i], dataImageMemory[i], 0);
+            vkBindImageMemory(this->device, dataImages[i].back(), dataImagesMemory[i].back(), 0);
 
             VkImageViewCreateInfo dataTextureInfo{};
             dataTextureInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            dataTextureInfo.image = this->dataImage[i];
+            dataTextureInfo.image = this->dataImages[i].back();
             dataTextureInfo.viewType = VK_IMAGE_VIEW_TYPE_1D;
             dataTextureInfo.format = VK_FORMAT_R32_SFLOAT;
             dataTextureInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -674,24 +680,27 @@ public:
             dataTextureInfo.subresourceRange.baseArrayLayer = 0;
             dataTextureInfo.subresourceRange.layerCount = 1;
 
-            vkCreateImageView(this->device, &dataTextureInfo, nullptr, &dataTexture[i]);
+            vkCreateImageView(this->device, &dataTextureInfo, nullptr, &dataTextures[i].back());
 
+            /*
             VkDescriptorSetLayoutBinding imageSamplerBinding{};
-            imageSamplerBinding.binding = 1;
+            imageSamplerBinding.binding = this->dataImages[i].size();
             imageSamplerBinding.descriptorCount = 1;
             imageSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             imageSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             imageSamplerBinding.pImmutableSamplers = nullptr;
+            */
 
+            // Could be commented out too as texture is updated every frame.
             VkDescriptorImageInfo descriptorImageInfo{};
             descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            descriptorImageInfo.imageView = dataTexture[i];
+            descriptorImageInfo.imageView = dataTextures[i].back();
             descriptorImageInfo.sampler = dataSampler;
 
             VkWriteDescriptorSet samplerWrite{};
             samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             samplerWrite.dstSet = descriptorSet;
-            samplerWrite.dstBinding = 1;
+            samplerWrite.dstBinding = dataTextures[i].size();
             samplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             samplerWrite.pImageInfo = &descriptorImageInfo;
             samplerWrite.descriptorCount = 1;
@@ -790,20 +799,24 @@ public:
     VkDeviceMemory stagingBufferMemory;
     void* mappedStagedData;
     int textureIndex = 0;
-    void createUniformBufferTexture1D(const float* dataBuffer, uint32_t size, VkDescriptorSet descriptorSet) {
+
+    void createTexturesStagingBuffer(uint32_t size) {
         createBuffer(size * sizeof(float), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
         vkMapMemory(this->device, stagingBufferMemory, 0, size * sizeof(float), 0, &mappedStagedData);
-        memcpy(this->mappedStagedData, dataBuffer, static_cast<size_t>(size*sizeof(float)));
+    }
+
+    //void createUniformBufferTexture1D(const float* dataBuffer, uint32_t size, VkDescriptorSet descriptorSet) {
+        //memcpy(this->mappedStagedData, dataBuffer, static_cast<size_t>(size*sizeof(float)));
         //vkUnmapMemory(this->device, stagingBufferMemory);
 
-        createImage1D(size, descriptorSet);
+      //  createImage1D(size, descriptorSet);
         //transitionImageLayout(this->dataImage, VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         //copyBufferToImage1D(stagingBuffer, this->dataImage, static_cast<uint32_t>(size));
         //transitionImageLayout(this->dataImage[i], VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
         //vkDestroyBuffer(this->device, stagingBuffer, nullptr);
         //vkFreeMemory(this->device, stagingBufferMemory, nullptr);
-    }
+    //}
     
     void createGraphicsPipeline() {
         // Graphics Pipeline
@@ -845,14 +858,15 @@ public:
         UniformBuffer resolutionUBO = createUniformBuffer(sizeof(glm::vec4), &resolution);
         std::vector<VkDescriptorSetLayoutBinding> bindings = {
             { 0,  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-            { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+            { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
         };
 
         createDescriptorSetLayout(bindings);
 
         std::vector<VkDescriptorPoolSize> poolSizes = {
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 }
         };
 
         createDescriptorPool(poolSizes, 1);
@@ -860,10 +874,16 @@ public:
         this->fragDescriptorSet = allocateDescriptorSet();
         updateUniformBufferDescriptorSet(this->fragDescriptorSet, 0, resolutionUBO.buffer, sizeof(glm::vec4));
 
+        create1DImageSampler();
+        
         const uint32_t bufferSize = 512;
-        float dataBuffer[bufferSize] = { 0 };
-        for (int i = 0; i < bufferSize; ++i) dataBuffer[i] = sin(i * 0.0174532925 * 10);
-        createUniformBufferTexture1D(dataBuffer, bufferSize, this->fragDescriptorSet);
+        //float dataBuffer[bufferSize] = { 0 };
+        //for (int i = 0; i < bufferSize; ++i) dataBuffer[i] = sin(i * 0.0174532925 * 10);
+        createTexturesStagingBuffer(bufferSize);
+        createImage1D(bufferSize, this->fragDescriptorSet);
+        //for (int i = 0; i < bufferSize; ++i) dataBuffer[i] = cos(i * 0.0174532925 * 5);
+        createImage1D(bufferSize, this->fragDescriptorSet);
+
 
         // Dynamic State
         std::vector<VkDynamicState> dynamicStates = {
@@ -1115,7 +1135,8 @@ public:
         vkDestroySwapchainKHR(device, swapChain, nullptr);
 
         for(int i = 0; i < 2; i++)
-            vkDestroyImage(device, dataImage[i], nullptr);
+            for(auto dImg : dataImages[i])
+                vkDestroyImage(device, dImg, nullptr);
         vkDestroyBuffer(device, vertexBuffer, nullptr);
         vkDestroyDevice(device, nullptr);
         vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -1197,30 +1218,32 @@ public:
         //vkCmdDraw(this->commandBuffers[currentFrame], 6, 1, 0, 0);
 
         // TODO: Next uniform buffers will need to have at least as much as FRAMES_IN_FLIGHT to avoid reading/writting corruption
-        const uint32_t bufferSize = 512;
-        float dataBuffer[bufferSize] = { 0 };
-        for (int i = 0; i < bufferSize; ++i) dataBuffer[i] = sin(i * 0.0174532925 * 10 + (rand()%10));
-        memcpy(this->mappedStagedData, dataBuffer, static_cast<size_t>(bufferSize * sizeof(float)));
+        for (size_t i = 0; i < this->dataImages[this->textureIndex].size(); i++) {
+            const uint32_t bufferSize = 512;
+            float dataBuffer[bufferSize] = { 0 };
+            for (int i = 0; i < bufferSize; ++i) dataBuffer[i] = sin(i * 0.0174532925 * 10 + (rand()%10));
+            memcpy(this->mappedStagedData, dataBuffer, static_cast<size_t>(bufferSize * sizeof(float)));
 
-        transitionImageLayout(this->dataImage[this->textureIndex], VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        copyBufferToImage1D(this->stagingBuffer, this->dataImage[this->textureIndex], static_cast<uint32_t>(bufferSize));
-        transitionImageLayout(this->dataImage[this->textureIndex], VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        VkDescriptorImageInfo descriptorImageInfo{};
-        descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        descriptorImageInfo.imageView = this->dataTexture[this->textureIndex];  // Use the correct texture
-        descriptorImageInfo.sampler = this->dataSampler;
+            transitionImageLayout(this->dataImages[this->textureIndex][i], VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            copyBufferToImage1D(this->stagingBuffer, this->dataImages[this->textureIndex][i], static_cast<uint32_t>(bufferSize));
+            transitionImageLayout(this->dataImages[this->textureIndex][i], VK_FORMAT_R32_SFLOAT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            VkDescriptorImageInfo descriptorImageInfo{};
+            descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            descriptorImageInfo.imageView = this->dataTextures[this->textureIndex][i];  // Use the correct texture
+            descriptorImageInfo.sampler = this->dataSampler;
 
-        // Update descriptor set with new texture
-        VkWriteDescriptorSet samplerWrite{};
-        samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        samplerWrite.dstSet = this->fragDescriptorSet;
-        samplerWrite.dstBinding = 1;  // Assuming texture is bound to binding 1
-        samplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerWrite.pImageInfo = &descriptorImageInfo;
-        samplerWrite.descriptorCount = 1;
+            // Update descriptor set with new texture
+            VkWriteDescriptorSet samplerWrite{};
+            samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            samplerWrite.dstSet = this->fragDescriptorSet;
+            samplerWrite.dstBinding = i+1;  // Assuming texture is bound to binding 1
+            samplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            samplerWrite.pImageInfo = &descriptorImageInfo;
+            samplerWrite.descriptorCount = 1;
+            vkUpdateDescriptorSets(this->device, 1, &samplerWrite, 0, nullptr);
+        }
+
         this->textureIndex = (this->textureIndex + 1) & 1;
-
-        vkUpdateDescriptorSets(this->device, 1, &samplerWrite, 0, nullptr);
        
         vkCmdBindDescriptorSets(
             this->commandBuffers[currentFrame],
